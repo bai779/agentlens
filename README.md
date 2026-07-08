@@ -22,7 +22,7 @@
 
 ```bash
 # 安装（拷贝文件夹即可，零依赖）
-git clone https://github.com/yourname/agentlens.git
+git clone https://github.com/bai779/agentlens.git
 # 或直接作为 CodeWhale / Claude Code skill 使用：
 cp -r agentlens ~/.deepseek/skills/
 
