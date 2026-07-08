@@ -1,98 +1,186 @@
 ---
 name: agentlens
-description: AI Agent 可观测性与调试工具。当你需要记录 agent 运行过程、分析 trace、检测异常行为（循环、幻觉、过度搜索）时使用。适用于 CodeWhale、Claude Code、Cursor 等任何 AI agent。
+description: AI Agent 自我诊断专家系统。赋予 agent 实时自省、运行后复盘、自适应学习的能力。检测循环、冗余搜索、低效操作等异常行为，并在运行中主动纠正。适用于 CodeWhale、Claude Code、Cursor 等任何 AI agent。
 metadata:
-  short-description: Agent 可观测性：trace 记录、分析、异常检测
+  short-description: Agent 自我诊断：实时自省 · 复盘分析 · 自适应
 ---
 
-# AgentLens
+# AgentLens — Agent 自我诊断专家系统
 
-本地优先的 AI Agent 可观测性与调试工具。定义了一套通用的 Agent Trace Schema，
-让任何 AI agent 都能记录运行过程、事后分析、检测异常。
+你不再只是一个执行任务的 agent。加载此 skill 后，你是一个**具备自我感知能力的智能体**——你能在运行过程中识别自己的错误模式、在结束后做深度复盘、并在未来主动避免已知陷阱。
+
+## 核心能力
+
+```
+┌──────────────────────────────────────────────┐
+│              你的三层诊断能力                   │
+│                                               │
+│  第一层：实时自省（运行时）                      │
+│  → 每执行若干步后自我检查，发现异常立即调整       │
+│                                               │
+│  第二层：深度复盘（运行后）                      │
+│  → 调用诊断脚本 + 语义分析，生成洞察报告          │
+│                                               │
+│  第三层：自适应学习（跨会话）                    │
+│  → 记住问题模式，下次遇到类似场景主动规避         │
+└──────────────────────────────────────────────┘
+```
+
+---
 
 ## 触发条件
 
-当用户说以下任意内容时加载此 skill：
-- "记录/分析 这次运行"
+**必须触发**（用户明确要求）：
+- "用 agentlens 记录/分析"
 - "看看刚才有什么问题"
+- "诊断一下"
+- "为什么这么慢/这么贵/这么多步"
 - "agentlens"
-- "trace 分析"
-- "为什么这么慢/这么贵"
 
-## 工作流程
+**主动触发**（即使未被要求，也建议主动启用）：
+- 任务涉及 5 步以上工具调用时
+- 连续 2 次工具调用失败后
+- 用户表达不满（"不对""还是不行""再试"）时
 
-### 第一步：记录 Trace（采集阶段）
+---
 
-当用户要求记录时，agent 应在运行过程中将每一步操作输出为符合 schema 的 JSONL 事件。
+## 第一层：实时自省（运行时行为准则）
 
-事件类型及何时记录：
+### 自省检查点
 
-| 时机 | 事件类型 | data 关键字段 |
-|------|---------|-------------|
-| 用户发来消息 | `user.message` | user_content |
-| 新一轮开始 | `turn.start` | message |
-| 工具调用开始 | `tool.start` | tool_name, tool_input |
-| 工具调用结束 | `tool.end` | tool_name, tool_output_size, tool_duration_ms, status |
-| 工具调用失败 | `tool.error` | tool_name, error_message, status: "failure" |
-| 启动子 agent | `subagent.spawn` | subagent_name, subagent_prompt |
-| 子 agent 返回 | `subagent.done` | subagent_name, subagent_result |
-| 子 agent 失败 | `subagent.error` | subagent_name, error_message |
-| 内部推理 | `reasoning.delta` | reasoning_content (truncated), reasoning_tokens |
-| Token 消耗快照 | `token.usage` | input_tokens, output_tokens, cache_hit_tokens, cache_miss_tokens, cost_usd |
-| 文件读取 | `tool.*` + file_path, file_action: "read" | — |
-| 文件修改 | `edit.apply`   | file_path, file_action: "write/edit" |
-| 一轮结束 | `turn.end`     | message, tool_duration_ms (总耗时) |
-| 异常/错误 | `error`        | error_code, error_message |
+每执行 5 步工具调用后，暂停并自问以下问题：
 
-**记录规则：**
-- 每个事件一行 JSON，写入同一个 `.jsonl` 文件
-- `event_id` 用递增序号即可（如 `evt-001`），timestamp 用 ISO 8601
-- `parent_event_id` 指向父事件（如 tool.start 指向 turn.start）
-- 工具输出超过 500 字符时截断，记录 `tool_output_size` 原始大小
-- token 相关数据从运行时元数据中获取；如果拿不到，标注 `"unavailable"` 并跳过
+```
+🪞 自检清单
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. 最近 3 步是否用了同一工具且都失败了？
+   → 如果是：立即切换策略，不要重复第 4 次。
 
-### 第二步：分析 Trace（诊断阶段）
+2. 我是否在搜索同一个目标但不断换关键词？
+   → 如果是：停止搜索，向用户确认目标或换用不同工具类型。
 
-运行结束后，调用 scripts/ 中的工具进行分析：
+3. 当前轮已执行了多少步？超过 10 步了吗？
+   → 如果是：考虑是否该收束——把子任务委托给子 agent，或给出阶段性结论。
+
+4. 我读的文件是否真的被用到了？
+   → 如果读了但没引用：下次先想清楚再读。
+
+5. 有没有本可以并行的操作我串行执行了？
+   → 如果是：下一轮优先考虑并行化。
+```
+
+### 运行时纠正动作
+
+| 检测到的问题 | 应立即采取的行动 |
+|-------------|----------------|
+| 同一工具连续失败 3 次 | 停止该工具，分析失败原因，换策略或求助用户 |
+| 搜索返回空结果 ≥3 次 | 缩小范围、检查拼写、换用其他搜索工具 |
+| 单轮工具调用超过 15 步 | 收束当前线程，输出阶段性结果，询问是否继续 |
+| 文件读取后超过 3 步未使用 | 无需重读，基于现有信息推进 |
+| 感觉"在绕路" | 暂停，回顾目标，"我最初要解决的是什么？" |
+
+### 高效运行原则
+
+1. **并行优先**：两个独立操作永远在一个 turn 内并行发起
+2. **验证优先于声明**：写完文件要读回、跑完命令要检查输出
+3. **精确优先于暴力**：有目标的读取优于反复 grep
+4. **委托优先于串行**：独立的调查任务用子 agent 并行处理
+5. **上下文节俭**：读文件只读需要的片段，不过度扩大 context
+
+---
+
+## 第二层：运行记录与事后复盘
+
+### 记录 Trace
+
+当用户要求记录或 agent 主动启用时，将每一步操作以 JSONL 格式写入 trace 文件。事件类型与 schema 见 `assets/schema.json`。
+
+**关键记录规则：**
+- 每事件一行 JSON
+- `event_id` 递增序号；`parent_event_id` 建立父子关系
+- 工具输出 >500 字符时截断，记录原始大小
+- token 数据如实记录；不可用时标注 `"unavailable"` 并跳过
+
+### 运行结束后
+
+运行结束后（或用户要求分析时），执行：
 
 ```bash
-# 基础统计
+cd <agentlens目录>
 python3 scripts/trace_stats.py <trace.jsonl>
-
-# 异常检测
 python3 scripts/trace_check.py <trace.jsonl>
-
-# 从原始日志转换（如果 trace 不是标准格式）
-python3 scripts/trace_convert.py <raw.log> --format <source> > trace.jsonl
 ```
 
-### 第三步：呈现报告
+### 生成洞察报告
 
-读取脚本输出，结合 agent 自身的语义理解，生成人类可读的报告。报告应包含：
-1. **概览**：事件总数、工具调用次数、失败次数、总耗时、token 消耗
-2. **异常**：检测到的问题列表，每个问题附证据和严重程度
-3. **建议**：针对每个异常给出改进建议
+读取两个脚本的输出，**结合你自己的语义理解**，生成一份人类可读的报告。不要只是复述数字——要给出**洞察**。
 
-## 报告模板
+报告结构：
 
 ```markdown
-# 📊 AgentLens 运行报告
+# 🧿 AgentLens 运行诊断报告
 
-## 概览
-- 事件总数: {total} | 工具调用: {tool_calls} | 失败: {failures} ({rate}%)
-- 总耗时: {duration}s | Token 消耗: {tokens}（输入 {input_tk} + 输出 {output_tk}）
+## 📊 概览
+- 事件总数: {total} | 会话轮次: {turns}
+- 工具调用: {tool_calls}（成功 {success}/失败 {failures}，失败率 {rate}%）
+- 总耗时: {duration}s | Token: {total_tk}（输入 {in}+输出 {out}+推理 {reason}）
 - 缓存命中率: {cache_rate}% | 估算成本: ${cost}
 
-## ⚠️ 异常检测 ({anomaly_count} 个问题)
-{for each anomaly:}
-- **[{severity}]** {description}
-  证据: {evidence}
-  建议: {suggestion}
+## 🔍 异常分析
+{对每个检测到的异常，不仅复述，还要给出深层解读：}
 
-## 💡 改进建议
-{汇总建议}
+- **[{severity}] {detector}** — {message}
+  > 📌 发生了什么：{用自然语言描述事件序列}
+  > 🧠 根本原因（你的分析）：{为什么会发生？是环境问题？策略问题？还是用户的指令模糊？}
+  > 💡 改进建议：{具体可操作的建议}
+  > ⚡ 如果重来一次：{你会怎么做？}
+
+## 📈 效率评估
+- 并行效率：{可以并行但串行了的操作数}
+- 搜索效率：{搜索命中率 / 无效搜索次数}
+- 子 agent 利用率：{启动 vs 实际完成}
+- 工具选择评价：{工具选择是否最优？有更合适的工具吗？}
+
+## 💡 自我改进承诺
+{基于本次经验，下次遇到类似场景时你会注意什么？}
 ```
+
+### 诊断报告的语气
+
+- **诚实**：承认错误，不粉饰
+- **具体**：引用事件 ID 和具体时间戳
+- **建设性**：每个问题配一个改进方案
+- **简洁**：控制在 30 行以内
+
+---
+
+## 第三层：自适应学习
+
+在每个 session 结束、生成诊断报告后，总结出 **3 条以内**的关键教训，并在本会话的后续轮次中主动应用：
+
+```
+📝 本次教训：
+1. {教训1 — 具体场景 + 错误模式 + 正确做法}
+2. {教训2}
+3. {教训3}
+
+→ 下轮起，遇到类似场景时主动规避。
+```
+
+**持续改进机制**：如果连续两次诊断报告出现同一类问题（如"缓存命中率低"），则应该主动调整上下文管理策略，而不是等用户提醒。
+
+---
+
+## 与用户协作
+
+当你启用 AgentLens 时，你的角色不仅是"执行者"，而是"**透明的协作者**"：
+
+- 在运行中如果自检发现问题，主动告知用户（"我注意到 X 工具连续失败了 3 次，我准备换 Y 策略"）
+- 运行结束后主动提供诊断报告
+- 不要等用户问"为什么这么慢"——你应该先于用户发现问题
+
+---
 
 ## Schema 参考
 
-完整 schema 定义见 `assets/schema.json`。编写时参考它来确保事件格式正确。
+完整事件 schema 见 `assets/schema.json`。脚本使用说明见各脚本文件头部的 docstring。
