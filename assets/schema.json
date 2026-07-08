@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlens.dev/schema/v1/trace-event.json",
+  "title": "AgentLens Trace Event",
+  "description": "A single event in an AI agent execution trace. Each line in a .jsonl file is one event.",
+  "type": "object",
+  "required": ["event_id", "timestamp", "type", "session_id"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Unique event identifier (UUID v4 recommended)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp with timezone"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "session.start",
+        "session.end",
+        "turn.start",
+        "turn.end",
+        "reasoning.delta",
+        "reasoning.end",
+        "tool.start",
+        "tool.end",
+        "tool.error",
+        "subagent.spawn",
+        "subagent.done",
+        "subagent.error",
+        "token.usage",
+        "cache.hit",
+        "cache.miss",
+        "edit.apply",
+        "edit.rollback",
+        "error",
+        "metric",
+        "user.message"
+      ],
+      "description": "Event type"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier, shared by all events in one agent session"
+    },
+    "parent_event_id": {
+      "type": "string",
+      "description": "ID of the parent event (for nested spans like tool calls inside a turn)"
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Identifier for the agent that produced this event (e.g. 'codewhale', 'claude-code')"
+    },
+    "agent_version": {
+      "type": "string",
+      "description": "Version of the agent software"
+    },
+    "model": {
+      "type": "string",
+      "description": "LLM model in use (e.g. 'deepseek-v4-pro', 'claude-sonnet-4-20250514')"
+    },
+    "turn_id": {
+      "type": "string",
+      "description": "Conversation turn identifier"
+    },
+
+    "data": {
+      "type": "object",
+      "description": "Event-type-specific payload. Structure depends on `type`.",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Human-readable message or summary"
+        },
+        "tool_name": {
+          "type": "string",
+          "description": "Name of the tool being called (for tool.* events)"
+        },
+        "tool_input": {
+          "description": "Tool call arguments"
+        },
+        "tool_output": {
+          "description": "Tool call result (truncated)"
+        },
+        "tool_output_size": {
+          "type": "integer",
+          "description": "Byte size of tool output before truncation"
+        },
+        "tool_duration_ms": {
+          "type": "integer",
+          "description": "Tool call wall-clock duration in milliseconds"
+        },
+        "subagent_name": {
+          "type": "string",
+          "description": "Name of the spawned sub-agent"
+        },
+        "subagent_prompt": {
+          "type": "string",
+          "description": "Prompt given to the sub-agent"
+        },
+        "subagent_result": {
+          "type": "string",
+          "description": "Summary of sub-agent result"
+        },
+        "reasoning_content": {
+          "type": "string",
+          "description": "Excerpt of internal reasoning/thinking tokens"
+        },
+        "reasoning_tokens": {
+          "type": "integer",
+          "description": "Number of reasoning tokens consumed"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "description": "Number of input/prompt tokens"
+        },
+        "output_tokens": {
+          "type": "integer",
+          "description": "Number of output/completion tokens"
+        },
+        "cache_hit_tokens": {
+          "type": "integer",
+          "description": "Number of prefix-cache-hit tokens"
+        },
+        "cache_miss_tokens": {
+          "type": "integer",
+          "description": "Number of prefix-cache-miss tokens"
+        },
+        "cost_usd": {
+          "type": "number",
+          "description": "Estimated cost in USD for this operation"
+        },
+        "file_path": {
+          "type": "string",
+          "description": "File path involved in the operation"
+        },
+        "file_action": {
+          "type": "string",
+          "enum": ["read", "write", "edit", "delete"],
+          "description": "File operation type"
+        },
+        "error_code": {
+          "type": "string",
+          "description": "Machine-readable error code"
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Human-readable error description"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["success", "failure", "timeout", "cancelled"],
+          "description": "Outcome status"
+        },
+        "user_content": {
+          "type": "string",
+          "description": "Content of the user message (for user.message events)"
+        },
+        "metric_name": {
+          "type": "string",
+          "description": "Metric name (for metric events)"
+        },
+        "metric_value": {
+          "type": "number",
+          "description": "Metric value"
+        }
+      }
+    },
+
+    "metadata": {
+      "type": "object",
+      "description": "Arbitrary key-value metadata. Extensible by agent implementations.",
+      "additionalProperties": true
+    }
+  }
+}
