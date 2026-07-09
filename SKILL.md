@@ -109,6 +109,9 @@ metadata:
 cd <agentlens目录>
 python3 scripts/trace_stats.py <trace.jsonl>
 python3 scripts/trace_check.py <trace.jsonl>
+
+# 终端可视化
+python3 scripts/trace_viz.py <trace.jsonl>
 ```
 
 ### 生成洞察报告
